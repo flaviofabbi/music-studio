@@ -8,7 +8,8 @@ import {
   Play, 
   Download,
   Clock,
-  Star
+  Star,
+  AlertCircle
 } from 'lucide-react';
 import { db, auth } from '../lib/firebase';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -22,22 +23,30 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const [stats, setStats] = useState({ musicCount: 0, videoCount: 0 });
   const [recentCreations, setRecentCreations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!auth.currentUser) return;
-      
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchDashboardData(user.uid);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const fetchDashboardData = async (uid: string) => {
+      setError(null);
       try {
         const musicQuery = query(
           collection(db, 'musicas'),
-          where('id_usuario', '==', auth.currentUser.uid),
+          where('id_usuario', '==', uid),
           orderBy('data', 'desc'),
           limit(5)
         );
         
         const videoQuery = query(
           collection(db, 'videos'),
-          where('id_usuario', '==', auth.currentUser.uid),
+          where('id_usuario', '==', uid),
           orderBy('data', 'desc'),
           limit(5)
         );
@@ -50,19 +59,29 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         const musicas = musicSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'music' }));
         const videos = videoSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'video' }));
 
-        setRecentCreations([...musicas, ...videos].sort((a: any, b: any) => b.data - a.data).slice(0, 5));
+        setRecentCreations([...musicas, ...videos].sort((a: any, b: any) => {
+          const dateA = a.data?.seconds || 0;
+          const dateB = b.data?.seconds || 0;
+          return dateB - dateA;
+        }).slice(0, 5));
+        
         setStats({
           musicCount: musicSnap.size,
           videoCount: videoSnap.size
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error fetching dashboard data:", err);
+        if (err.message.includes('permission')) {
+          setError("Acesso Negado: Verifique as Regras do Firestore no Console do Firebase.");
+        } else {
+          setError(err.message);
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
+    return () => unsubscribe();
   }, []);
 
   return (
@@ -104,6 +123,21 @@ export function Dashboard({ onNavigate }: DashboardProps) {
       </section>
 
       {/* Stats Grid */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-3xl flex items-start space-x-4">
+          <AlertCircle className="text-red-500 flex-shrink-0" />
+          <div>
+            <h4 className="text-red-500 font-bold mb-1">Erro de Permissão no Firestore</h4>
+            <p className="text-red-500/70 text-sm">
+              O banco de dados está bloqueado. Para corrigir: <br />
+              1. Vá no Console do Firebase &gt; Firestore &gt; Rules. <br />
+              2. Publique as regras que permitem acesso ao usuário logado. <br />
+              3. Verifique se há um link de criação de índice no Console (F12) do navegador.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">

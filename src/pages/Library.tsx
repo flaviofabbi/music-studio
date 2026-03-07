@@ -22,40 +22,51 @@ export function Library() {
   const [filter, setFilter] = useState<'all' | 'music' | 'video'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchLibrary = async () => {
-    if (!auth.currentUser) return;
-    setLoading(true);
-    try {
-      const musicQuery = query(
-        collection(db, 'musicas'),
-        where('id_usuario', '==', auth.currentUser.uid),
-        orderBy('data', 'desc')
-      );
-      
-      const videoQuery = query(
-        collection(db, 'videos'),
-        where('id_usuario', '==', auth.currentUser.uid),
-        orderBy('data', 'desc')
-      );
-
-      const [musicSnap, videoSnap] = await Promise.all([
-        getDocs(musicQuery),
-        getDocs(videoQuery)
-      ]);
-
-      const musicas = musicSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'music' }));
-      const videos = videoSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'video' }));
-
-      setItems([...musicas, ...videos].sort((a: any, b: any) => b.data - a.data));
-    } catch (err) {
-      console.error("Error fetching library:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchLibrary();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        fetchLibrary(user.uid);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const fetchLibrary = async (uid: string) => {
+      setLoading(true);
+      try {
+        const musicQuery = query(
+          collection(db, 'musicas'),
+          where('id_usuario', '==', uid),
+          orderBy('data', 'desc')
+        );
+        
+        const videoQuery = query(
+          collection(db, 'videos'),
+          where('id_usuario', '==', uid),
+          orderBy('data', 'desc')
+        );
+
+        const [musicSnap, videoSnap] = await Promise.all([
+          getDocs(musicQuery),
+          getDocs(videoQuery)
+        ]);
+
+        const musicas = musicSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'music' }));
+        const videos = videoSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'video' }));
+
+        setItems([...musicas, ...videos].sort((a: any, b: any) => {
+          const dateA = a.data?.seconds || 0;
+          const dateB = b.data?.seconds || 0;
+          return dateB - dateA;
+        }));
+      } catch (err) {
+        console.error("Error fetching library:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return () => unsubscribe();
   }, []);
 
   const handleDelete = async (id: string, type: 'music' | 'video') => {

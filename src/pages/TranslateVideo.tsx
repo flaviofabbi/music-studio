@@ -17,11 +17,22 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
+import { db, auth } from '../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
 export function TranslateVideo() {
   const [file, setFile] = useState<File | null>(null);
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState(0);
   const [result, setResult] = useState<any>(null);
+  const [subtitleStyle, setSubtitleStyle] = useState('modern');
+
+  const subtitleStyles = [
+    { id: 'classic', label: 'Clássico', className: 'text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] font-serif' },
+    { id: 'modern', label: 'Moderno', className: 'bg-black/60 px-4 py-1 rounded-lg text-white font-sans' },
+    { id: 'bold', label: 'Destaque', className: 'text-yellow-400 font-black uppercase tracking-tighter drop-shadow-md' },
+    { id: 'netflix', label: 'Netflix', className: 'text-white font-sans drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]' },
+  ];
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -54,16 +65,37 @@ export function TranslateVideo() {
 
     for (let i = 0; i < steps.length; i++) {
       setStep(i + 1);
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 1500));
     }
 
-    setResult({
+    const videoResult = {
       title: file.name,
       originalLang: 'Inglês',
       targetLang: 'Português',
       duration: '02:45',
-      videoUrl: URL.createObjectURL(file) // For demo, we use the original file
-    });
+      videoUrl: URL.createObjectURL(file)
+    };
+
+    setResult(videoResult);
+
+    // Save to Firestore
+    if (auth.currentUser) {
+      try {
+        await addDoc(collection(db, 'videos'), {
+          id_usuario: auth.currentUser.uid,
+          titulo: file.name,
+          tipo: 'Tradução IA',
+          idioma_origem: 'Inglês',
+          idioma_destino: 'Português',
+          data: serverTimestamp(),
+          videoUrl: videoResult.videoUrl,
+          estilo_legenda: subtitleStyle
+        });
+      } catch (err) {
+        console.error("Error saving video:", err);
+      }
+    }
+    
     setProcessing(false);
   };
 
@@ -127,7 +159,37 @@ export function TranslateVideo() {
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Estilo da Legenda</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <button className="bg-emerald-500 text-black py-2 rounded-lg text-xs font-bold">Embutida</button>
+                  {subtitleStyles.map((style) => (
+                    <button
+                      key={style.id}
+                      onClick={() => setSubtitleStyle(style.id)}
+                      className={cn(
+                        "py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border",
+                        subtitleStyle === style.id 
+                          ? "bg-emerald-500 text-black border-emerald-500" 
+                          : "bg-white/5 text-zinc-400 border-white/5 hover:border-white/10"
+                      )}
+                    >
+                      {style.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-black/40 rounded-2xl p-4 border border-white/5 flex flex-col items-center justify-center min-h-[80px] text-center">
+                <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest mb-2">Prévia do Estilo</span>
+                <div className={cn(
+                  "text-sm transition-all duration-300",
+                  subtitleStyles.find(s => s.id === subtitleStyle)?.className
+                )}>
+                  Sua legenda aparecerá assim
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Formato de Saída</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 py-2 rounded-lg text-xs font-bold">Embutida</button>
                   <button className="bg-white/5 text-zinc-400 py-2 rounded-lg text-xs font-bold hover:text-white">Arquivo .SRT</button>
                 </div>
               </div>
@@ -136,7 +198,7 @@ export function TranslateVideo() {
             <button
               onClick={handleProcess}
               disabled={!file || processing}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-bold py-4 rounded-2xl flex items-center justify-center space-x-2 transition-all"
+              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-bold py-4 rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-lg shadow-emerald-500/20"
             >
               {processing ? (
                 <>
@@ -205,9 +267,12 @@ export function TranslateVideo() {
                     className="w-full h-full object-contain"
                     controls
                   />
-                  <div className="absolute bottom-10 left-0 right-0 flex justify-center pointer-events-none">
-                    <div className="bg-black/80 px-4 py-2 rounded text-white text-lg font-bold border border-white/10">
-                      [Legenda em Português Gerada]
+                  <div className="absolute bottom-12 left-0 right-0 flex justify-center pointer-events-none px-12 text-center">
+                    <div className={cn(
+                      "text-xl transition-all duration-300",
+                      subtitleStyles.find(s => s.id === subtitleStyle)?.className
+                    )}>
+                      "Olá a todos, bem-vindos a este vídeo."
                     </div>
                   </div>
                 </div>
