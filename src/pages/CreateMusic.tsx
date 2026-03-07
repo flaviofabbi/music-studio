@@ -10,11 +10,16 @@ import {
   Pause,
   Download,
   FileText,
-  Image as ImageIcon,
+  Image as  ImageIcon,
   RotateCcw,
-  Share2
+  Share2,
+  X,
+  Wand2,
+  Type as TypeIcon,
+  Music2,
+  Loader2
 } from 'lucide-react';
-import { generateLyrics, generateCoverArt, generateSpeech } from '../lib/gemini';
+import { generateLyrics, generateCoverArt, generateSpeech, optimizeLyrics } from '../lib/gemini';
 import { db, auth, storage } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
@@ -23,9 +28,12 @@ import { cn } from '../lib/utils';
 
 export function CreateMusic() {
   const [loading, setLoading] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualLyrics, setManualLyrics] = useState('');
 
   const [formData, setFormData] = useState({
     theme: '',
@@ -39,6 +47,60 @@ export function CreateMusic() {
 
   const styles = ['Pop', 'Rap', 'Trap', 'Sertanejo', 'Funk', 'Rock', 'Gospel', 'Eletrônica'];
   const moods = ['Romântico', 'Triste', 'Motivacional', 'Feliz', 'Épico'];
+
+  const optimizationOptions = [
+    { id: 'rhyme', label: 'Melhorar Rimas', icon: Music2, instruction: 'Melhore as rimas e a métrica da letra.' },
+    { id: 'poetic', label: 'Mais Poético', icon: Sparkles, instruction: 'Torne a letra mais poética e profunda.' },
+    { id: 'slang', label: 'Adicionar Gírias', icon: Mic2, instruction: 'Adicione gírias e expressões urbanas atuais.' },
+    { id: 'shorten', label: 'Encurtar', icon: TypeIcon, instruction: 'Encurte a letra mantendo a mensagem principal.' },
+  ];
+
+  const handleOptimize = async (instruction: string) => {
+    if (!result?.lyrics) return;
+    setOptimizing(true);
+    try {
+      const currentLyricsText = result.lyrics.map((s: any) => `[${s.section}]\n${s.content}`).join('\n\n');
+      const optimized = await optimizeLyrics(currentLyricsText, instruction);
+      setResult({ ...result, ...optimized });
+    } catch (err) {
+      console.error("Error optimizing lyrics:", err);
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  const handleManualSubmit = async () => {
+    if (!manualLyrics) return;
+    setLoading(true);
+    setShowManualModal(false);
+    try {
+      // Parse manual lyrics into sections if possible, or just one big section
+      const sections = manualLyrics.split('\n\n').map(block => {
+        const lines = block.split('\n');
+        const firstLine = lines[0].trim();
+        if (firstLine.startsWith('[') && firstLine.endsWith(']')) {
+          return { section: firstLine.slice(1, -1), content: lines.slice(1).join('\n') };
+        }
+        return { section: 'Verso', content: block };
+      });
+
+      const lyricsData = {
+        title: 'Minha Composição',
+        lyrics: sections
+      };
+
+      const coverArt = await generateCoverArt(formData.theme || 'Música', formData.style);
+      const fullText = sections.map(s => s.content).join(' ');
+      const audio = await generateSpeech(fullText.substring(0, 500));
+
+      setResult({ ...lyricsData, coverArt, audio, style: formData.style, duration: formData.duration });
+      setAudioUrl(audio);
+    } catch (err) {
+      console.error("Error processing manual lyrics:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!formData.theme) return;
@@ -194,6 +256,14 @@ export function CreateMusic() {
                 </>
               )}
             </button>
+
+            <button
+              onClick={() => setShowManualModal(true)}
+              className="w-full bg-white/5 hover:bg-white/10 text-zinc-300 font-bold py-3 rounded-2xl flex items-center justify-center space-x-2 transition-all border border-white/10"
+            >
+              <FileText size={18} />
+              <span>Inserir Letra Manualmente</span>
+            </button>
           </div>
         </div>
 
@@ -253,6 +323,33 @@ export function CreateMusic() {
                   </div>
                 </div>
 
+                {/* Optimization Bar */}
+                <div className="px-8 py-4 bg-black/20 border-y border-white/5 overflow-x-auto scrollbar-hide">
+                  <div className="flex items-center space-x-3 min-w-max">
+                    <div className="flex items-center space-x-2 text-zinc-500 mr-2">
+                      <Wand2 size={14} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Otimizar:</span>
+                    </div>
+                    {optimizationOptions.map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => handleOptimize(opt.instruction)}
+                        disabled={optimizing}
+                        className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-zinc-300 transition-all disabled:opacity-50"
+                      >
+                        <opt.icon size={12} className="text-emerald-400" />
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                    {optimizing && (
+                      <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold animate-pulse">
+                        <Loader2 size={12} className="animate-spin" />
+                        <span>Otimizando...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Lyrics Section */}
                 <div className="flex-1 p-8 overflow-y-auto max-h-[400px] scrollbar-hide">
                   <div className="space-y-8">
@@ -303,6 +400,66 @@ export function CreateMusic() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Manual Lyrics Modal */}
+      <AnimatePresence>
+        {showManualModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowManualModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-2xl bg-zinc-900 border border-white/10 rounded-[2rem] overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                  <FileText className="text-emerald-500" />
+                  <span>Inserir Letra Manualmente</span>
+                </h3>
+                <button 
+                  onClick={() => setShowManualModal(false)}
+                  className="p-2 text-zinc-500 hover:text-white transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-sm text-zinc-400">
+                  Dica: Use <span className="text-emerald-400">[Verso]</span>, <span className="text-emerald-400">[Refrão]</span> para organizar sua música.
+                </p>
+                <textarea
+                  value={manualLyrics}
+                  onChange={(e) => setManualLyrics(e.target.value)}
+                  placeholder="[Verso 1]&#10;Minha vida é uma estrada...&#10;&#10;[Refrão]&#10;E eu sigo em frente..."
+                  className="w-full h-80 bg-black/50 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none font-mono text-sm leading-relaxed"
+                />
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => setShowManualModal(false)}
+                    className="flex-1 py-3 rounded-xl font-bold text-zinc-400 hover:bg-white/5 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleManualSubmit}
+                    disabled={!manualLyrics}
+                    className="flex-[2] bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black font-bold py-3 rounded-xl transition-all"
+                  >
+                    Confirmar e Gerar Áudio
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

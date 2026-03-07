@@ -41,6 +41,42 @@ export const generateLyrics = async (params: {
   return JSON.parse(response.text || "{}");
 };
 
+export const optimizeLyrics = async (lyrics: string, instruction: string) => {
+  const model = "gemini-3.1-pro-preview";
+  const prompt = `Otimize a seguinte letra de música baseada nesta instrução: "${instruction}". 
+  Mantenha a estrutura de seções (Verso, Refrão, etc.).
+  Letra original:
+  ${lyrics}
+  
+  Retorne a letra otimizada em formato JSON com a mesma estrutura: { title: string, lyrics: [{ section: string, content: string }] }.`;
+
+  const response = await genAI.models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          lyrics: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                section: { type: Type.STRING },
+                content: { type: Type.STRING },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return JSON.parse(response.text || "{}");
+};
+
 export const generateCoverArt = async (theme: string, style: string) => {
   const response = await genAI.models.generateContent({
     model: "gemini-2.5-flash-image",
