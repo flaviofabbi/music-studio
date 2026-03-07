@@ -1,0 +1,206 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Music, 
+  Video, 
+  History, 
+  Plus, 
+  ArrowRight, 
+  Play, 
+  Download,
+  Clock,
+  Star
+} from 'lucide-react';
+import { db, auth } from '../lib/firebase';
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { motion } from 'framer-motion';
+
+interface DashboardProps {
+  onNavigate: (page: string) => void;
+}
+
+export function Dashboard({ onNavigate }: DashboardProps) {
+  const [stats, setStats] = useState({ musicCount: 0, videoCount: 0 });
+  const [recentCreations, setRecentCreations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!auth.currentUser) return;
+      
+      try {
+        const musicQuery = query(
+          collection(db, 'musicas'),
+          where('id_usuario', '==', auth.currentUser.uid),
+          orderBy('data', 'desc'),
+          limit(5)
+        );
+        
+        const videoQuery = query(
+          collection(db, 'videos'),
+          where('id_usuario', '==', auth.currentUser.uid),
+          orderBy('data', 'desc'),
+          limit(5)
+        );
+
+        const [musicSnap, videoSnap] = await Promise.all([
+          getDocs(musicQuery),
+          getDocs(videoQuery)
+        ]);
+
+        const musicas = musicSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'music' }));
+        const videos = videoSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'video' }));
+
+        setRecentCreations([...musicas, ...videos].sort((a: any, b: any) => b.data - a.data).slice(0, 5));
+        setStats({
+          musicCount: musicSnap.size,
+          videoCount: videoSnap.size
+        });
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  return (
+    <div className="space-y-10">
+      {/* Hero Section */}
+      <section>
+        <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-r from-emerald-600 to-cyan-600 p-12">
+          <div className="relative z-10 max-w-2xl">
+            <h2 className="text-5xl font-bold text-white mb-6 leading-tight">
+              O futuro da criação musical está aqui.
+            </h2>
+            <p className="text-emerald-50/80 text-lg mb-8">
+              Gere músicas completas, letras e traduza vídeos com inteligência artificial de ponta.
+            </p>
+            <div className="flex space-x-4">
+              <button 
+                onClick={() => onNavigate('create-music')}
+                className="bg-white text-emerald-600 px-8 py-4 rounded-2xl font-bold flex items-center space-x-2 hover:scale-105 transition-transform"
+              >
+                <Plus size={20} />
+                <span>Criar Música</span>
+              </button>
+              <button 
+                onClick={() => onNavigate('translate-video')}
+                className="bg-emerald-700/30 backdrop-blur-md text-white border border-white/20 px-8 py-4 rounded-2xl font-bold flex items-center space-x-2 hover:bg-emerald-700/40 transition-all"
+              >
+                <Video size={20} />
+                <span>Traduzir Vídeo</span>
+              </button>
+            </div>
+          </div>
+          
+          {/* Decorative Elements */}
+          <div className="absolute top-0 right-0 w-1/2 h-full opacity-20 pointer-events-none">
+            <div className="absolute top-10 right-10 w-64 h-64 bg-white rounded-full blur-3xl animate-pulse"></div>
+            <div className="absolute bottom-10 right-40 w-48 h-48 bg-cyan-300 rounded-full blur-3xl"></div>
+          </div>
+        </div>
+      </section>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+              <Music size={24} />
+            </div>
+            <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full">+12%</span>
+          </div>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Músicas Geradas</p>
+          <h3 className="text-3xl font-bold">{stats.musicCount}</h3>
+        </div>
+        
+        <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
+              <Video size={24} />
+            </div>
+            <span className="text-xs font-bold text-cyan-500 bg-cyan-500/10 px-2 py-1 rounded-full">+5%</span>
+          </div>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Vídeos Traduzidos</p>
+          <h3 className="text-3xl font-bold">{stats.videoCount}</h3>
+        </div>
+
+        <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+              <Star size={24} />
+            </div>
+            <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full">Pro</span>
+          </div>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Créditos Disponíveis</p>
+          <h3 className="text-3xl font-bold">1,240</h3>
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <section>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-2xl font-bold flex items-center space-x-3">
+            <Clock className="text-emerald-500" />
+            <span>Atividade Recente</span>
+          </h3>
+          <button 
+            onClick={() => onNavigate('library')}
+            className="text-emerald-400 hover:text-emerald-300 text-sm font-bold flex items-center space-x-1"
+          >
+            <span>Ver tudo</span>
+            <ArrowRight size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-emerald-500"></div>
+            </div>
+          ) : recentCreations.length > 0 ? (
+            recentCreations.map((item) => (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                key={item.id}
+                className="group bg-zinc-900/30 hover:bg-zinc-900/60 border border-white/5 p-4 rounded-2xl flex items-center justify-between transition-all"
+              >
+                <div className="flex items-center space-x-4">
+                  <div className={cn(
+                    "w-12 h-12 rounded-xl flex items-center justify-center",
+                    item.type === 'music' ? "bg-emerald-500/10 text-emerald-500" : "bg-cyan-500/10 text-cyan-500"
+                  )}>
+                    {item.type === 'music' ? <Music size={20} /> : <Video size={20} />}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white group-hover:text-emerald-400 transition-colors">{item.titulo}</h4>
+                    <p className="text-xs text-zinc-500">{item.tipo} • {new Date(item.data?.seconds * 1000).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button className="p-2 text-zinc-400 hover:text-white transition-colors">
+                    <Play size={18} />
+                  </button>
+                  <button className="p-2 text-zinc-400 hover:text-white transition-colors">
+                    <Download size={18} />
+                  </button>
+                </div>
+              </motion.div>
+            ))
+          ) : (
+            <div className="text-center py-12 bg-zinc-900/20 border border-dashed border-white/10 rounded-3xl">
+              <p className="text-zinc-500">Nenhuma criação encontrada. Comece a criar agora!</p>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(' ');
+}

@@ -1,0 +1,8 @@
+{
+  "name": "MusicAI Studio",
+  "description": "Plataforma avançada de criação de música com IA e tradução automática de vídeos com legendas.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
