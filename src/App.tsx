@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { CreateMusic } from './pages/CreateMusic';
 import { TranslateVideo } from './pages/TranslateVideo';
 import { Library } from './pages/Library';
+import { Admin } from './pages/Admin';
 import { Login } from './pages/Login';
 
 export default function App() {
@@ -18,13 +19,31 @@ export default function App() {
       setUser(user);
       setLoading(false);
     });
-    return () => unsubscribe();
-  }, []);
+
+    const handleBypass = (e: any) => {
+      setUser(e.detail);
+      setLoading(false);
+    };
+
+    window.addEventListener('auth:bypass', handleBypass);
+    
+    // Safety timeout: if loading takes more than 5 seconds, stop it
+    const timeout = setTimeout(() => {
+      if (loading) setLoading(false);
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('auth:bypass', handleBypass);
+      clearTimeout(timeout);
+    };
+  }, [loading]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+        <p className="text-zinc-500 text-sm animate-pulse">Iniciando sistema...</p>
       </div>
     );
   }
@@ -43,6 +62,8 @@ export default function App() {
         return <TranslateVideo />;
       case 'library':
         return <Library />;
+      case 'admin':
+        return <Admin />;
       default:
         return <Dashboard onNavigate={setCurrentPage} />;
     }

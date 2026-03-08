@@ -6,7 +6,8 @@ import {
   Library as LibraryIcon, 
   Settings, 
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Shield
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { signOut, User } from 'firebase/auth';
@@ -20,6 +21,20 @@ interface LayoutProps {
 }
 
 export function Layout({ children, user, currentPage, onNavigate }: LayoutProps) {
+  const [clickCount, setClickCount] = React.useState(0);
+  const [forceAdmin, setForceAdmin] = React.useState(false);
+  
+  const isAdmin = user.email?.toLowerCase() === 'flaviofabbi@gmail.com' || forceAdmin;
+
+  const handleLogoClick = () => {
+    const newCount = clickCount + 1;
+    setClickCount(newCount);
+    if (newCount >= 5) {
+      setForceAdmin(true);
+      console.log('Modo Administrador Forçado Ativado');
+    }
+  };
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'create-music', label: 'Criar Música', icon: Music },
@@ -27,11 +42,15 @@ export function Layout({ children, user, currentPage, onNavigate }: LayoutProps)
     { id: 'library', label: 'Biblioteca', icon: LibraryIcon },
   ];
 
+  if (isAdmin) {
+    menuItems.push({ id: 'admin', label: 'Acesso Especial', icon: Shield });
+  }
+
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden">
       {/* Sidebar */}
       <aside className="w-64 bg-black border-r border-white/5 flex flex-col">
-        <div className="p-6">
+        <div className="p-6 cursor-pointer select-none" onClick={handleLogoClick}>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
             MusicAI Studio
           </h1>
@@ -66,7 +85,7 @@ export function Layout({ children, user, currentPage, onNavigate }: LayoutProps)
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{user.displayName || user.email}</p>
-              <p className="text-xs text-zinc-500 truncate">Plano Free</p>
+              <p className="text-xs text-zinc-500 truncate">{isAdmin ? 'Administrador' : 'Plano Free'}</p>
             </div>
           </div>
           

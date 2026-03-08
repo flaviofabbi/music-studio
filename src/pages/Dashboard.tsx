@@ -9,7 +9,8 @@ import {
   Download,
   Clock,
   Star,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from 'lucide-react';
 import { db, auth } from '../lib/firebase';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -20,7 +21,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const [stats, setStats] = useState({ musicCount: 0, videoCount: 0 });
+  const [stats, setStats] = useState({ musicCount: 0, videoCount: 0, transcriptionCount: 0, subtitleCount: 0 });
   const [recentCreations, setRecentCreations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +52,21 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           limit(5)
         );
 
-        const [musicSnap, videoSnap] = await Promise.all([
+        const transQuery = query(
+          collection(db, 'transcricoes'),
+          where('id_usuario', '==', uid)
+        );
+
+        const subQuery = query(
+          collection(db, 'legendas'),
+          where('id_usuario', '==', uid)
+        );
+
+        const [musicSnap, videoSnap, transSnap, subSnap] = await Promise.all([
           getDocs(musicQuery),
-          getDocs(videoQuery)
+          getDocs(videoQuery),
+          getDocs(transQuery),
+          getDocs(subQuery)
         ]);
 
         const musicas = musicSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'music' }));
@@ -67,7 +80,9 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         
         setStats({
           musicCount: musicSnap.size,
-          videoCount: videoSnap.size
+          videoCount: videoSnap.size,
+          transcriptionCount: transSnap.size,
+          subtitleCount: subSnap.size
         });
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err);
@@ -155,21 +170,21 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
               <Video size={24} />
             </div>
-            <span className="text-xs font-bold text-cyan-500 bg-cyan-500/10 px-2 py-1 rounded-full">+5%</span>
+            <span className="text-xs font-bold text-cyan-500 bg-cyan-500/10 px-2 py-1 rounded-full">+{stats.videoCount}</span>
           </div>
-          <p className="text-zinc-400 text-sm font-medium mb-1">Vídeos Traduzidos</p>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Vídeos/Áudios Processados</p>
           <h3 className="text-3xl font-bold">{stats.videoCount}</h3>
         </div>
 
         <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
-              <Star size={24} />
+              <FileText size={24} />
             </div>
-            <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full">Pro</span>
+            <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full">Ativo</span>
           </div>
-          <p className="text-zinc-400 text-sm font-medium mb-1">Créditos Disponíveis</p>
-          <h3 className="text-3xl font-bold">1,240</h3>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Transcrições & Legendas</p>
+          <h3 className="text-3xl font-bold">{stats.transcriptionCount + stats.subtitleCount}</h3>
         </div>
       </div>
 

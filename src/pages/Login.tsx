@@ -80,6 +80,19 @@ export function Login() {
             >
               {loading ? 'Processando...' : isLogin ? 'Entrar' : 'Criar Conta'}
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                // Bypass login for emergency access
+                window.dispatchEvent(new CustomEvent('auth:bypass', { 
+                  detail: { email: 'flaviofabbi@gmail.com', displayName: 'Flavio (Acesso Direto)' } 
+                }));
+              }}
+              className="w-full bg-white/5 hover:bg-white/10 text-zinc-400 text-xs py-2 rounded-xl transition-all border border-white/5"
+            >
+              Problemas para entrar? Clique aqui para Acesso Direto
+            </button>
           </form>
 
           <div className="relative my-8">

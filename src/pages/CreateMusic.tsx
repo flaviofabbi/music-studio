@@ -17,9 +17,12 @@ import {
   Wand2,
   Type as TypeIcon,
   Music2,
-  Loader2
+  Loader2,
+  Copy,
+  Check,
+  Instagram
 } from 'lucide-react';
-import { generateLyrics, generateCoverArt, generateSpeech, optimizeLyrics } from '../lib/gemini';
+import { generateLyrics, generateCoverArt, generateSpeech, optimizeLyrics, generateSocialCaption, translateLyrics } from '../lib/gemini';
 import { db, auth, storage } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
@@ -34,6 +37,10 @@ export function CreateMusic() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualLyrics, setManualLyrics] = useState('');
+  const [socialCaption, setSocialCaption] = useState<string | null>(null);
+  const [generatingCaption, setGeneratingCaption] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const [formData, setFormData] = useState({
     theme: '',
@@ -100,6 +107,42 @@ export function CreateMusic() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGenerateCaption = async () => {
+    if (!result?.lyrics) return;
+    setGeneratingCaption(true);
+    try {
+      const fullLyrics = result.lyrics.map((s: any) => s.content).join('\n');
+      const caption = await generateSocialCaption(result.title, fullLyrics, result.style);
+      setSocialCaption(caption || '');
+    } catch (err) {
+      console.error("Error generating caption:", err);
+    } finally {
+      setGeneratingCaption(false);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (!result?.lyrics) return;
+    setTranslating(true);
+    try {
+      const currentLyricsText = result.lyrics.map((s: any) => `[${s.section}]\n${s.content}`).join('\n\n');
+      const translated = await translateLyrics(currentLyricsText, 'Português');
+      setResult({ ...result, ...translated });
+    } catch (err) {
+      console.error("Error translating lyrics:", err);
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const handleCopyLyrics = () => {
+    if (!result?.lyrics) return;
+    const fullLyrics = result.lyrics.map((s: any) => `[${s.section}]\n${s.content}`).join('\n\n');
+    navigator.clipboard.writeText(fullLyrics);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleGenerate = async () => {
@@ -347,8 +390,51 @@ export function CreateMusic() {
                         <span>Otimizando...</span>
                       </div>
                     )}
+                    {formData.language !== 'Português' && (
+                      <button
+                        onClick={handleTranslate}
+                        disabled={translating}
+                        className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-xs font-bold text-blue-400 transition-all disabled:opacity-50"
+                      >
+                        {translating ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+                        <span>Traduzir para PT</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={handleGenerateCaption}
+                      disabled={generatingCaption}
+                      className="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-xs font-bold text-emerald-400 transition-all disabled:opacity-50"
+                    >
+                      {generatingCaption ? <Loader2 size={12} className="animate-spin" /> : <Instagram size={12} />}
+                      <span>Legenda Social</span>
+                    </button>
                   </div>
                 </div>
+
+                {/* Social Caption Preview */}
+                {socialCaption && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="px-8 py-4 bg-emerald-500/5 border-b border-white/5"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Legenda para Redes Sociais</span>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(socialCaption);
+                          alert('Legenda copiada!');
+                        }}
+                        className="text-[10px] font-bold text-emerald-400 hover:underline"
+                      >
+                        COPIAR
+                      </button>
+                    </div>
+                    <p className="text-xs text-zinc-300 italic leading-relaxed">
+                      {socialCaption}
+                    </p>
+                  </motion.div>
+                )}
 
                 {/* Lyrics Section */}
                 <div className="flex-1 p-8 overflow-y-auto max-h-[400px] scrollbar-hide">
@@ -372,9 +458,16 @@ export function CreateMusic() {
                     <Download size={20} className="text-zinc-400 group-hover:text-emerald-400" />
                     <span className="text-[10px] text-zinc-500 font-bold uppercase">MP3</span>
                   </button>
-                  <button className="flex flex-col items-center justify-center space-y-1 p-3 rounded-2xl hover:bg-white/5 transition-colors group">
-                    <FileText size={20} className="text-zinc-400 group-hover:text-emerald-400" />
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase">Letra</span>
+                  <button 
+                    onClick={handleCopyLyrics}
+                    className="flex flex-col items-center justify-center space-y-1 p-3 rounded-2xl hover:bg-white/5 transition-colors group"
+                  >
+                    {copied ? (
+                      <Check size={20} className="text-emerald-400" />
+                    ) : (
+                      <FileText size={20} className="text-zinc-400 group-hover:text-emerald-400" />
+                    )}
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase">{copied ? 'Copiado!' : 'Letra'}</span>
                   </button>
                   <button className="flex flex-col items-center justify-center space-y-1 p-3 rounded-2xl hover:bg-white/5 transition-colors group">
                     <RotateCcw size={20} className="text-zinc-400 group-hover:text-emerald-400" />
