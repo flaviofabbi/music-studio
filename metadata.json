@@ -1,6 +1,6 @@
 {
-  "name": "MusicAI Studio",
-  "description": "Plataforma avançada de criação de música com IA e tradução automática de vídeos com legendas.",
+  "name": "Music Creator AI",
+  "description": "Crie músicas completas, letras e legendas sincronizadas com inteligência artificial.",
   "requestFramePermissions": [
     "camera",
     "microphone"

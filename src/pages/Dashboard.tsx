@@ -10,7 +10,10 @@ import {
   Clock,
   Star,
   AlertCircle,
-  FileText
+  FileText,
+  Globe,
+  Captions,
+  Mic2
 } from 'lucide-react';
 import { db, auth } from '../lib/firebase';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -21,7 +24,15 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const [stats, setStats] = useState({ musicCount: 0, videoCount: 0, transcriptionCount: 0, subtitleCount: 0 });
+  const [stats, setStats] = useState({ 
+    musicCount: 0, 
+    videoCount: 0, 
+    lyricsCount: 0,
+    transcriptionCount: 0, 
+    subtitleCount: 0,
+    languagesCount: 0,
+    dubbingCount: 0
+  });
   const [recentCreations, setRecentCreations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,27 +73,49 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           where('id_usuario', '==', uid)
         );
 
-        const [musicSnap, videoSnap, transSnap, subSnap] = await Promise.all([
+        const dubQuery = query(
+          collection(db, 'dublagens'),
+          where('id_usuario', '==', uid)
+        );
+
+        const lyricsQuery = query(
+          collection(db, 'letras'),
+          where('id_usuario', '==', uid)
+        );
+
+        const [musicSnap, videoSnap, lyricsSnap, transSnap, subSnap, dubSnap] = await Promise.all([
           getDocs(musicQuery),
           getDocs(videoQuery),
+          getDocs(lyricsQuery),
           getDocs(transQuery),
-          getDocs(subQuery)
+          getDocs(subQuery),
+          getDocs(dubQuery)
         ]);
+
+        // Count unique languages from transcriptions
+        const languages = new Set();
+        transSnap.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.idioma) languages.add(data.idioma);
+        });
 
         const musicas = musicSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'music' }));
         const videos = videoSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'video' }));
 
         setRecentCreations([...musicas, ...videos].sort((a: any, b: any) => {
-          const dateA = a.data?.seconds || 0;
-          const dateB = b.data?.seconds || 0;
+          const dateA = a.data?.seconds || a.data_criacao?.seconds || 0;
+          const dateB = b.data?.seconds || b.data_criacao?.seconds || 0;
           return dateB - dateA;
         }).slice(0, 5));
         
         setStats({
           musicCount: musicSnap.size,
           videoCount: videoSnap.size,
+          lyricsCount: lyricsSnap.size,
           transcriptionCount: transSnap.size,
-          subtitleCount: subSnap.size
+          subtitleCount: subSnap.size,
+          languagesCount: languages.size || 1,
+          dubbingCount: dubSnap.size
         });
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err);
@@ -120,8 +153,15 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                 <span>Criar Música</span>
               </button>
               <button 
-                onClick={() => onNavigate('translate-video')}
+                onClick={() => onNavigate('create-lyrics')}
                 className="bg-emerald-700/30 backdrop-blur-md text-white border border-white/20 px-8 py-4 rounded-2xl font-bold flex items-center space-x-2 hover:bg-emerald-700/40 transition-all"
+              >
+                <FileText size={20} />
+                <span>Criar Letra</span>
+              </button>
+              <button 
+                onClick={() => onNavigate('translate-video')}
+                className="bg-zinc-800/50 backdrop-blur-md text-white border border-white/20 px-8 py-4 rounded-2xl font-bold flex items-center space-x-2 hover:bg-zinc-800/60 transition-all"
               >
                 <Video size={20} />
                 <span>Traduzir Vídeo</span>
@@ -168,23 +208,45 @@ export function Dashboard({ onNavigate }: DashboardProps) {
         <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
-              <Video size={24} />
+              <Captions size={24} />
             </div>
             <span className="text-xs font-bold text-cyan-500 bg-cyan-500/10 px-2 py-1 rounded-full">+{stats.videoCount}</span>
           </div>
-          <p className="text-zinc-400 text-sm font-medium mb-1">Vídeos/Áudios Processados</p>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Legendas Geradas</p>
           <h3 className="text-3xl font-bold">{stats.videoCount}</h3>
         </div>
 
         <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+              <Globe size={24} />
+            </div>
+            <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full">{stats.languagesCount} Idiomas</span>
+          </div>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Traduções Realizadas</p>
+          <h3 className="text-3xl font-bold">{stats.subtitleCount}</h3>
+        </div>
+
+        <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
+              <Mic2 size={24} />
+            </div>
+            <span className="text-xs font-bold text-cyan-500 bg-cyan-500/10 px-2 py-1 rounded-full">+{stats.dubbingCount}</span>
+          </div>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Dublagens Criadas</p>
+          <h3 className="text-3xl font-bold">{stats.dubbingCount}</h3>
+        </div>
+
+        <div className="bg-zinc-900/50 border border-white/5 p-8 rounded-3xl backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500">
               <FileText size={24} />
             </div>
-            <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-full">Ativo</span>
+            <span className="text-xs font-bold text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full">+{stats.lyricsCount}</span>
           </div>
-          <p className="text-zinc-400 text-sm font-medium mb-1">Transcrições & Legendas</p>
-          <h3 className="text-3xl font-bold">{stats.transcriptionCount + stats.subtitleCount}</h3>
+          <p className="text-zinc-400 text-sm font-medium mb-1">Letras Compostas</p>
+          <h3 className="text-3xl font-bold">{stats.lyricsCount}</h3>
         </div>
       </div>
 
@@ -222,11 +284,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
                     "w-12 h-12 rounded-xl flex items-center justify-center",
                     item.type === 'music' ? "bg-emerald-500/10 text-emerald-500" : "bg-cyan-500/10 text-cyan-500"
                   )}>
-                    {item.type === 'music' ? <Music size={20} /> : <Video size={20} />}
+                    {item.type === 'music' ? <Music size={20} /> : <Captions size={20} />}
                   </div>
                   <div>
-                    <h4 className="font-bold text-white group-hover:text-emerald-400 transition-colors">{item.titulo}</h4>
-                    <p className="text-xs text-zinc-500">{item.tipo} • {new Date(item.data?.seconds * 1000).toLocaleDateString()}</p>
+                    <h4 className="font-bold text-white group-hover:text-emerald-400 transition-colors">{item.titulo || item.nome_arquivo}</h4>
+                    <p className="text-xs text-zinc-500">{item.tipo} • {new Date((item.data?.seconds || item.data_criacao?.seconds) * 1000).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">

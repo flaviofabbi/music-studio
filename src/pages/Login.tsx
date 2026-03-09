@@ -42,8 +42,8 @@ export function Login() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-500 mb-4 border border-emerald-500/20">
             <Music size={32} />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">MusicAI Studio</h1>
-          <p className="text-zinc-400">Crie música e traduza vídeos com o poder da IA</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Music Creator AI</h1>
+          <p className="text-zinc-400">Crie músicas, letras e legendas com o poder da IA</p>
         </div>
 
         <div className="bg-zinc-900/50 border border-white/5 rounded-3xl p-8 backdrop-blur-xl">

@@ -4,6 +4,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { CreateMusic } from './pages/CreateMusic';
+import { CreateLyrics } from './pages/CreateLyrics';
 import { TranslateVideo } from './pages/TranslateVideo';
 import { Library } from './pages/Library';
 import { Admin } from './pages/Admin';
@@ -58,6 +59,8 @@ export default function App() {
         return <Dashboard onNavigate={setCurrentPage} />;
       case 'create-music':
         return <CreateMusic />;
+      case 'create-lyrics':
+        return <CreateLyrics />;
       case 'translate-video':
         return <TranslateVideo />;
       case 'library':

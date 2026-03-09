@@ -9,7 +9,8 @@ import {
   Play,
   MoreVertical,
   Calendar,
-  Layers
+  Layers,
+  FileText
 } from 'lucide-react';
 import { db, auth } from '../lib/firebase';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
@@ -19,7 +20,7 @@ import { cn } from '../lib/utils';
 export function Library() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'music' | 'video'>('all');
+  const [filter, setFilter] = useState<'all' | 'music' | 'video' | 'lyrics'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -46,15 +47,23 @@ export function Library() {
           orderBy('data', 'desc')
         );
 
-        const [musicSnap, videoSnap] = await Promise.all([
+        const lyricsQuery = query(
+          collection(db, 'letras'),
+          where('id_usuario', '==', uid),
+          orderBy('data', 'desc')
+        );
+
+        const [musicSnap, videoSnap, lyricsSnap] = await Promise.all([
           getDocs(musicQuery),
-          getDocs(videoQuery)
+          getDocs(videoQuery),
+          getDocs(lyricsQuery)
         ]);
 
         const musicas = musicSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'music' }));
         const videos = videoSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'video' }));
+        const letras = lyricsSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: 'lyrics' }));
 
-        setItems([...musicas, ...videos].sort((a: any, b: any) => {
+        setItems([...musicas, ...videos, ...letras].sort((a: any, b: any) => {
           const dateA = a.data?.seconds || 0;
           const dateB = b.data?.seconds || 0;
           return dateB - dateA;
@@ -69,10 +78,14 @@ export function Library() {
     return () => unsubscribe();
   }, []);
 
-  const handleDelete = async (id: string, type: 'music' | 'video') => {
+  const handleDelete = async (id: string, type: 'music' | 'video' | 'lyrics') => {
     if (!window.confirm('Tem certeza que deseja excluir esta criação?')) return;
     try {
-      await deleteDoc(doc(db, type === 'music' ? 'musicas' : 'videos', id));
+      let collectionName = 'musicas';
+      if (type === 'video') collectionName = 'videos';
+      if (type === 'lyrics') collectionName = 'letras';
+      
+      await deleteDoc(doc(db, collectionName, id));
       setItems(items.filter(item => item.id !== id));
     } catch (err) {
       console.error("Error deleting item:", err);
@@ -80,8 +93,11 @@ export function Library() {
   };
 
   const filteredItems = items.filter(item => {
-    const matchesFilter = filter === 'all' || (filter === 'music' && item.type === 'music') || (filter === 'video' && item.type === 'video');
-    const matchesSearch = item.titulo.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = filter === 'all' || 
+      (filter === 'music' && item.type === 'music') || 
+      (filter === 'video' && item.type === 'video') ||
+      (filter === 'lyrics' && item.type === 'lyrics');
+    const matchesSearch = (item.titulo || item.nome_arquivo || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
@@ -123,6 +139,12 @@ export function Library() {
             >
               Vídeos
             </button>
+            <button 
+              onClick={() => setFilter('lyrics')}
+              className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", filter === 'lyrics' ? "bg-emerald-500 text-black" : "text-zinc-400 hover:text-white")}
+            >
+              Letras
+            </button>
           </div>
         </div>
       </header>
@@ -152,22 +174,28 @@ export function Library() {
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       referrerPolicy="no-referrer"
                     />
-                  ) : (
+                  ) : item.type === 'video' ? (
                     <div className="w-full h-full flex items-center justify-center text-zinc-700">
                       <Video size={48} />
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-zinc-700 bg-zinc-900">
+                      <FileText size={48} />
                     </div>
                   )}
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-4">
                     <button className="w-12 h-12 rounded-full bg-emerald-500 text-black flex items-center justify-center hover:scale-110 transition-transform">
-                      <Play size={20} fill="currentColor" className="ml-1" />
+                      {item.type === 'lyrics' ? <FileText size={20} /> : <Play size={20} fill="currentColor" className="ml-1" />}
                     </button>
                   </div>
                   <div className="absolute top-4 left-4">
                     <span className={cn(
                       "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                      item.type === 'music' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/20" : "bg-cyan-500/20 text-cyan-400 border-cyan-500/20"
+                      item.type === 'music' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/20" : 
+                      item.type === 'video' ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/20" :
+                      "bg-blue-500/20 text-blue-400 border-blue-500/20"
                     )}>
-                      {item.type === 'music' ? 'Música' : 'Vídeo'}
+                      {item.type === 'music' ? 'Música' : item.type === 'video' ? 'Vídeo' : 'Letra'}
                     </span>
                   </div>
                 </div>

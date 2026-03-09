@@ -14,14 +14,20 @@ import {
   Settings2,
   Clock,
   Music,
-  FileCode
+  FileCode,
+  Sparkles,
+  Mic2,
+  Globe,
+  Captions,
+  Volume2,
+  ListMusic
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
 import { db, auth } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { transcribeAndTranslateVideo } from '../lib/gemini';
+import { transcribeAndTranslateAdvanced, LANGUAGES, generateDubbingTTS } from '../lib/gemini';
 
 export function TranslateVideo() {
   const [file, setFile] = useState<File | null>(null);
@@ -29,14 +35,22 @@ export function TranslateVideo() {
   const [step, setStep] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [subtitleStyle, setSubtitleStyle] = useState('modern');
-  const [currentSubtitle, setCurrentSubtitle] = useState('');
+  const [targetLanguage, setTargetLanguage] = useState('Português');
+  const [currentSubtitle, setCurrentSubtitle] = useState<any>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [dubbingUrl, setDubbingUrl] = useState<string | null>(null);
+  const [isDubbing, setIsDubbing] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
+  const dubbingRef = React.useRef<HTMLAudioElement>(null);
 
   const subtitleStyles = [
     { id: 'classic', label: 'Clássico', className: 'text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] font-serif' },
     { id: 'modern', label: 'Moderno', className: 'bg-black/60 px-4 py-1 rounded-lg text-white font-sans' },
     { id: 'bold', label: 'Destaque', className: 'text-yellow-400 font-black uppercase tracking-tighter drop-shadow-md' },
     { id: 'netflix', label: 'Netflix', className: 'text-white font-sans drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]' },
+    { id: 'tiktok', label: 'TikTok Style', className: 'text-5xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)] uppercase' },
+    { id: 'karaoke', label: 'Karaoke', className: 'text-3xl font-bold flex flex-wrap justify-center gap-2' },
   ];
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -70,6 +84,34 @@ export function TranslateVideo() {
     }).join('\n');
   };
 
+  const generateVTT = (subtitles: any[]) => {
+    let vtt = "WEBVTT\n\n";
+    subtitles.forEach((sub, index) => {
+      const formatTime = (seconds: number) => {
+        const date = new Date(0);
+        date.setSeconds(seconds);
+        return date.toISOString().substr(11, 12);
+      };
+      vtt += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n${sub.text}\n\n`;
+    });
+    return vtt;
+  };
+
+  const handleMediaError = (e: React.SyntheticEvent<HTMLMediaElement, Event>) => {
+    const error = (e.currentTarget as HTMLMediaElement).error;
+    console.error("Media element error:", error);
+    let message = "O formato de mídia não é suportado pelo seu navegador.";
+    if (error) {
+      switch (error.code) {
+        case 1: message = "Reprodução abortada."; break;
+        case 2: message = "Erro de rede ao carregar a mídia."; break;
+        case 3: message = "Erro de decodificação da mídia."; break;
+        case 4: message = "Formato de mídia não suportado pelo navegador."; break;
+      }
+    }
+    setMediaError(message);
+  };
+
   const downloadSRT = () => {
     if (!result?.subtitles) return;
     const srtContent = generateSRT(result.subtitles);
@@ -78,6 +120,20 @@ export function TranslateVideo() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `${result.title.split('.')[0]}.srt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadVTT = () => {
+    if (!result?.subtitles) return;
+    const vttContent = generateVTT(result.subtitles);
+    const blob = new Blob([vttContent], { type: 'text/vtt' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${result.title.split('.')[0]}.vtt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -102,68 +158,96 @@ export function TranslateVideo() {
       const base64 = await base64Promise;
 
       setStep(2);
-      // 2. Transcribe and Translate using Gemini
-      const data = await transcribeAndTranslateVideo(base64, file.type);
+      // 2. Transcribe and Translate using Gemini Advanced
+      const data = await transcribeAndTranslateAdvanced(base64, file.type, targetLanguage);
       
-      if (!data.subtitles || data.subtitles.length === 0) {
-        throw new Error("Áudio não detectado no arquivo.");
+      if (!data.segments || data.segments.length === 0) {
+        throw new Error("Nenhuma voz detectada no arquivo enviado.");
       }
 
-      setStep(4); // Skip to sync/final steps for UI feel
+      setStep(4);
       
       const videoResult = {
         title: file.name,
         originalLang: data.originalLanguage || 'Detectado',
-        targetLang: 'Português',
+        targetLang: targetLanguage,
         duration: 'Processado',
         videoUrl: URL.createObjectURL(file),
-        subtitles: data.subtitles || [],
-        fullText: data.subtitles.map((s: any) => s.text).join(' ')
+        subtitleUrl: URL.createObjectURL(new Blob([generateVTT(data.segments)], { type: 'text/vtt' })),
+        subtitles: data.segments || [],
+        fullText: data.fullTranslation,
+        originalText: data.fullTranscription,
+        structure: data.structure || []
       };
 
       setResult(videoResult);
 
       // Save to Firestore
       if (auth.currentUser) {
-        // Save to 'videos' collection
         const videoDoc = await addDoc(collection(db, 'videos'), {
           id_usuario: auth.currentUser.uid,
           nome_arquivo: file.name,
           titulo: file.name,
-          tipo: file.type.startsWith('video') ? 'Vídeo' : 'Áudio',
+          tipo: file.type.startsWith('video') ? 'Vídeo' : 'Música',
           idioma_origem: videoResult.originalLang,
-          idioma_destino: 'Português',
-          data: serverTimestamp(),
+          idioma_destino: targetLanguage,
+          data_criacao: serverTimestamp(),
           videoUrl: videoResult.videoUrl,
-          estilo_legenda: subtitleStyle
+          estilo_legenda: subtitleStyle,
+          estrutura_musica: videoResult.structure
         });
 
-        // Save to 'transcricoes' collection
         await addDoc(collection(db, 'transcricoes'), {
           id_usuario: auth.currentUser.uid,
           id_video: videoDoc.id,
           nome_arquivo: file.name,
-          texto_original: videoResult.fullText, // In this flow, we translate directly, so original is the same as translated for now or we could separate them if Gemini provided both
+          texto_original: videoResult.originalText,
           texto_traduzido: videoResult.fullText,
-          data: serverTimestamp()
+          idioma: targetLanguage,
+          data_criacao: serverTimestamp()
         });
 
-        // Save to 'legendas' collection
         await addDoc(collection(db, 'legendas'), {
           id_usuario: auth.currentUser.uid,
           id_video: videoDoc.id,
           nome_arquivo: file.name,
-          formato: 'SRT',
+          formato: 'SRT/VTT',
           conteudo: generateSRT(videoResult.subtitles),
-          data: serverTimestamp()
+          idioma: targetLanguage,
+          data_criacao: serverTimestamp()
         });
       }
     } catch (err: any) {
       console.error("Error processing video:", err);
-      alert(err.message || "Erro ao processar vídeo. Verifique o tamanho do arquivo.");
+      alert(err.message || "Erro ao processar arquivo.");
     } finally {
       setProcessing(false);
       setStep(0);
+    }
+  };
+
+  const handleDubbing = async () => {
+    if (!result?.fullText) return;
+    setIsDubbing(true);
+    try {
+      const url = await generateDubbingTTS(result.fullText);
+      setDubbingUrl(url);
+      
+      if (auth.currentUser && result) {
+        await addDoc(collection(db, 'dublagens'), {
+          id_usuario: auth.currentUser.uid,
+          nome_musica: result.title,
+          texto_traduzido: result.fullText,
+          arquivo_dublagem: url,
+          idioma: targetLanguage,
+          data_criacao: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error("Dubbing error:", err);
+      alert("Erro ao gerar dublagem.");
+    } finally {
+      setIsDubbing(false);
     }
   };
 
@@ -174,19 +258,45 @@ export function TranslateVideo() {
 
     const handleTimeUpdate = () => {
       const time = video.currentTime;
+      setCurrentTime(time);
       const sub = result.subtitles.find((s: any) => time >= s.start && time <= s.end);
-      setCurrentSubtitle(sub ? sub.text : '');
+      setCurrentSubtitle(sub || null);
+      
+      if (dubbingRef.current && !dubbingRef.current.paused) {
+        // Sync dubbing if needed, but usually they just play together
+      }
+    };
+
+    const handlePlay = () => {
+      if (dubbingRef.current && dubbingUrl) {
+        dubbingRef.current.currentTime = video.currentTime;
+        dubbingRef.current.play();
+      }
+    };
+
+    const handlePause = () => {
+      if (dubbingRef.current) dubbingRef.current.pause();
     };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
-    return () => video.removeEventListener('timeupdate', handleTimeUpdate);
-  }, [result]);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    
+    return () => {
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+    };
+  }, [result, dubbingUrl]);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       <header>
-        <h2 className="text-3xl font-bold text-white mb-2">Traduzir Vídeo</h2>
-        <p className="text-zinc-400">Tradução automática e legendagem profissional em segundos.</p>
+        <h2 className="text-3xl font-bold text-white mb-2 flex items-center space-x-3">
+          <Captions className="text-emerald-500" size={32} />
+          <span>Legendas & Tradução</span>
+        </h2>
+        <p className="text-zinc-400">Geração de legendas inteligentes e tradução profissional para vídeos e músicas.</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -233,14 +343,22 @@ export function TranslateVideo() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Idioma de Destino</label>
-                <div className="flex items-center space-x-3 bg-black/50 border border-white/10 rounded-xl px-4 py-3">
-                  <Languages size={18} className="text-emerald-500" />
-                  <span className="text-white font-medium">Português (Brasil)</span>
-                </div>
+                <select 
+                  value={targetLanguage}
+                  onChange={(e) => setTargetLanguage(e.target.value)}
+                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white font-medium outline-none focus:border-emerald-500 transition-colors"
+                >
+                  {LANGUAGES.map(lang => (
+                    <option key={lang} value={lang}>{lang}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Estilo da Legenda</label>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-2">
+                  <Captions size={14} className="text-emerald-500" />
+                  <span>Estilo da Legenda</span>
+                </label>
                 <div className="grid grid-cols-2 gap-3">
                   {subtitleStyles.map((style) => (
                     <button
@@ -345,13 +463,34 @@ export function TranslateVideo() {
                 className="bg-zinc-900/50 border border-white/5 rounded-[2.5rem] overflow-hidden flex flex-col h-full"
               >
                 <div className="aspect-video bg-black relative flex items-center justify-center group">
-                  {file?.type.startsWith('video') ? (
+                  {mediaError ? (
+                    <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
+                      <AlertCircle className="text-red-500" size={48} />
+                      <p className="text-red-400 font-bold uppercase text-xs tracking-wider">{mediaError}</p>
+                      <button 
+                        onClick={() => setMediaError(null)}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold text-white transition-all"
+                      >
+                        Tentar Novamente
+                      </button>
+                    </div>
+                  ) : file?.type.startsWith('video') ? (
                     <video 
-                      ref={videoRef}
-                      src={result.videoUrl} 
+                      ref={videoRef} 
+                      controls 
                       className="w-full h-full object-contain"
-                      controls
-                    />
+                      onError={handleMediaError}
+                    >
+                      <source src={result.videoUrl} type="video/mp4" />
+                      <track
+                        src={result.subtitleUrl}
+                        kind="subtitles"
+                        srcLang="pt"
+                        label="Português"
+                        default
+                      />
+                      Seu navegador não suporta o elemento de vídeo.
+                    </video>
                   ) : (
                     <div className="flex flex-col items-center justify-center space-y-4">
                       <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500 animate-pulse">
@@ -359,24 +498,41 @@ export function TranslateVideo() {
                       </div>
                       <audio 
                         ref={videoRef as any}
-                        src={result.videoUrl} 
                         className="w-full max-w-md"
                         controls
-                      />
+                        onError={handleMediaError}
+                      >
+                        <source src={dubbingUrl || result.videoUrl} type={(dubbingUrl || result.videoUrl)?.startsWith('data:audio/wav') ? 'audio/wav' : 'audio/mpeg'} />
+                        Seu navegador não suporta o elemento de áudio.
+                      </audio>
                     </div>
                   )}
                   {currentSubtitle && (
-                    <div className="absolute bottom-12 left-0 right-0 flex justify-center pointer-events-none px-12 text-center z-10">
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-12 text-center z-10">
                       <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        key={currentSubtitle}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        key={currentSubtitle.text}
                         className={cn(
-                          "text-xl transition-all duration-300",
+                          "transition-all duration-300",
                           subtitleStyles.find(s => s.id === subtitleStyle)?.className
                         )}
                       >
-                        {currentSubtitle}
+                        {subtitleStyle === 'karaoke' ? (
+                          currentSubtitle.words?.map((w: any, i: number) => (
+                            <span 
+                              key={i} 
+                              className={cn(
+                                "transition-colors duration-200",
+                                currentTime >= w.start && currentTime <= w.end ? "text-yellow-400" : "text-white"
+                              )}
+                            >
+                              {w.word}{' '}
+                            </span>
+                          )) || currentSubtitle.text
+                        ) : (
+                          currentSubtitle.text
+                        )}
                       </motion.div>
                     </div>
                   )}
@@ -397,30 +553,94 @@ export function TranslateVideo() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex space-x-2">
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <button 
+                        onClick={handleDubbing}
+                        disabled={isDubbing}
+                        className="bg-cyan-500 text-black px-4 py-3 rounded-xl font-bold flex items-center space-x-2 hover:scale-105 transition-transform text-sm disabled:opacity-50"
+                      >
+                        {isDubbing ? <Loader2 size={18} className="animate-spin" /> : <Mic2 size={18} />}
+                        <span>Dublar</span>
+                      </button>
                       <button 
                         onClick={downloadSRT}
-                        className="bg-emerald-500 text-black px-6 py-3 rounded-xl font-bold flex items-center space-x-2 hover:scale-105 transition-transform"
+                        className="bg-emerald-500 text-black px-4 py-3 rounded-xl font-bold flex items-center space-x-2 hover:scale-105 transition-transform text-sm"
                       >
                         <FileCode size={18} />
-                        <span>Baixar SRT</span>
+                        <span>SRT</span>
                       </button>
-                      <button className="bg-white/5 text-white border border-white/10 px-6 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-white/10 transition-all">
-                        <Download size={18} />
-                        <span>Vídeo</span>
+                      <button 
+                        onClick={downloadVTT}
+                        className="bg-emerald-500 text-black px-4 py-3 rounded-xl font-bold flex items-center space-x-2 hover:scale-105 transition-transform text-sm"
+                      >
+                        <FileCode size={18} />
+                        <span>VTT</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="bg-black/30 rounded-2xl p-6 border border-white/5 max-h-[200px] overflow-y-auto scrollbar-hide">
-                    <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Preview da Transcrição</h4>
-                    <div className="space-y-2">
-                      {result.subtitles.map((sub: any, i: number) => (
-                        <p key={i} className="text-zinc-400 text-sm leading-relaxed">
-                          <span className="text-emerald-500/50 text-[10px] font-mono mr-2">[{sub.start.toFixed(1)}s]</span>
-                          {sub.text}
-                        </p>
-                      ))}
+                  {dubbingUrl && (
+                    <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-2xl flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Volume2 className="text-cyan-400" />
+                        <div>
+                          <p className="text-white font-bold text-sm">Dublagem Pronta!</p>
+                          <p className="text-cyan-400/70 text-xs">Voz em {result.targetLang}</p>
+                        </div>
+                      </div>
+                      <audio ref={dubbingRef} src={dubbingUrl} className="hidden" />
+                      <button 
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          a.href = dubbingUrl;
+                          a.download = `dublagem_${result.title}.wav`;
+                          a.click();
+                        }}
+                        className="bg-cyan-500 text-black p-2 rounded-lg hover:bg-cyan-400 transition-colors"
+                      >
+                        <Download size={16} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-black/30 rounded-2xl p-6 border border-white/5 max-h-[300px] overflow-y-auto scrollbar-hide">
+                      <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center space-x-2">
+                        <FileText size={14} />
+                        <span>Letra Traduzida</span>
+                      </h4>
+                      <div className="space-y-4">
+                        {result.subtitles.map((sub: any, i: number) => (
+                          <div key={i} className="space-y-1">
+                            {sub.type && (
+                              <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-tighter">[{sub.type}]</span>
+                            )}
+                            <p className="text-zinc-400 text-sm leading-relaxed">
+                              <span className="text-emerald-500/50 text-[10px] font-mono mr-2">[{sub.start.toFixed(1)}s]</span>
+                              {sub.text}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-black/30 rounded-2xl p-6 border border-white/5">
+                      <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center space-x-2">
+                        <ListMusic size={14} />
+                        <span>Estrutura Musical</span>
+                      </h4>
+                      <div className="space-y-3">
+                        {result.structure.length > 0 ? result.structure.map((s: string, i: number) => (
+                          <div key={i} className="flex items-center space-x-3 bg-white/5 p-3 rounded-xl border border-white/5">
+                            <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-500 text-[10px] font-bold">
+                              {i + 1}
+                            </div>
+                            <span className="text-sm text-white font-medium">{s}</span>
+                          </div>
+                        )) : (
+                          <p className="text-zinc-500 text-xs italic">Nenhuma estrutura identificada.</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

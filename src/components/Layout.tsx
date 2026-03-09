@@ -7,7 +7,9 @@ import {
   Settings, 
   LogOut,
   User as UserIcon,
-  Shield
+  Shield,
+  Captions,
+  FileText
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { signOut, User } from 'firebase/auth';
@@ -38,7 +40,8 @@ export function Layout({ children, user, currentPage, onNavigate }: LayoutProps)
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'create-music', label: 'Criar Música', icon: Music },
-    { id: 'translate-video', label: 'Traduzir Vídeo', icon: Video },
+    { id: 'create-lyrics', label: 'Criar Letra', icon: FileText },
+    { id: 'translate-video', label: 'Legendar Vídeo', icon: Captions },
     { id: 'library', label: 'Biblioteca', icon: LibraryIcon },
   ];
 
@@ -47,12 +50,12 @@ export function Layout({ children, user, currentPage, onNavigate }: LayoutProps)
   }
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-64 bg-black border-r border-white/5 flex flex-col">
+    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden flex-col md:flex-row">
+      {/* Sidebar - Desktop */}
+      <aside className="hidden md:flex w-64 bg-black border-r border-white/5 flex-col">
         <div className="p-6 cursor-pointer select-none" onClick={handleLogoClick}>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-            MusicAI Studio
+            Music Creator AI
           </h1>
         </div>
 
@@ -99,12 +102,50 @@ export function Layout({ children, user, currentPage, onNavigate }: LayoutProps)
         </div>
       </aside>
 
+      {/* Mobile Header */}
+      <header className="md:hidden bg-black border-b border-white/5 p-4 flex items-center justify-between">
+        <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+          Music Creator
+        </h1>
+        <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 border border-emerald-500/20 overflow-hidden">
+          {user.photoURL ? (
+            <img src={user.photoURL} alt={user.displayName || ''} className="w-full h-full" referrerPolicy="no-referrer" />
+          ) : (
+            <UserIcon size={16} />
+          )}
+        </div>
+      </header>
+
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-gradient-to-b from-zinc-900 to-black">
-        <div className="max-w-7xl mx-auto p-8">
+      <main className="flex-1 overflow-y-auto bg-gradient-to-b from-zinc-900 to-black pb-24 md:pb-0">
+        <div className="max-w-7xl mx-auto p-4 md:p-8">
           {children}
         </div>
       </main>
+
+      {/* Bottom Navigation - Mobile */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-black/90 backdrop-blur-lg border-t border-white/5 px-6 py-3 flex items-center justify-between z-50">
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onNavigate(item.id)}
+            className={cn(
+              "flex flex-col items-center space-y-1 transition-colors",
+              currentPage === item.id ? "text-emerald-400" : "text-zinc-500"
+            )}
+          >
+            <item.icon size={20} />
+            <span className="text-[10px] font-medium">{item.label.split(' ')[0]}</span>
+          </button>
+        ))}
+        <button
+          onClick={() => signOut(auth)}
+          className="flex flex-col items-center space-y-1 text-zinc-500"
+        >
+          <LogOut size={20} />
+          <span className="text-[10px] font-medium">Sair</span>
+        </button>
+      </nav>
     </div>
   );
 }
