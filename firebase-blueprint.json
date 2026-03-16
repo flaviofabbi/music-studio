@@ -1,0 +1,26 @@
+{
+  "entities": {
+    "Song": {
+      "title": "Song",
+      "description": "A generated song document",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "style": { "type": "string" },
+        "lyrics": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "audioUrl", "userId"]
+    }
+  },
+  "firestore": {
+    "/songs/{songId}": {
+      "schema": "Song",
+      "description": "Collection of generated songs"
+    }
+  }
+}

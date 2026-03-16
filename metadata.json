@@ -1,8 +1,9 @@
 {
-  "name": "Music Creator AI",
-  "description": "Crie músicas completas, letras e legendas sincronizadas com inteligência artificial.",
+  "name": "AudioFE – AI Music Studio",
+  "description": "Estúdio musical futurista com geração de música por IA, letras automáticas e legendagem de vídeos.",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "geolocation"
   ]
 }
