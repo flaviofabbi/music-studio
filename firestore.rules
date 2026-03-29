@@ -1,10 +1,54 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidProject(data) {
+      return data.keys().hasAll(['audioUrl', 'userId']) &&
+             data.userId is string &&
+             isValidUrl(data.audioUrl) &&
+             (!('videoUrl' in data) || isValidUrl(data.videoUrl)) &&
+             (!('title' in data) || (data.title is string && data.title.size() < 200)) &&
+             (!('prompt' in data) || (data.prompt is string && data.prompt.size() < 2000));
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId);
+      allow create: if isAuthenticated() && 
+                      request.resource.data.userId == request.auth.uid &&
+                      isValidProject(request.resource.data);
+      allow update: if isDocOwner() && 
+                      request.resource.data.userId == resource.data.userId &&
+                      isValidProject(request.resource.data);
+      allow delete: if isDocOwner();
+    }
+
+    // Keep songs for backward compatibility if needed, but restrict it
     match /songs/{songId} {
-      allow read: if true; // Publicly readable for library
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
     }
   }
 }

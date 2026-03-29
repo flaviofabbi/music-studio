@@ -1,22 +1,55 @@
-export async function processVideoSubtitles(file: File) {
-  // In a real app, we'd upload this to a server or use a client-side model.
-  // For this demo, we'll simulate the process with more realistic music video subtitles.
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        transcription: "Yeah, welcome to the future of sound. AudioFE in the house. Let's get it.",
-        translation: "Sim, bem-vindo ao futuro do som. AudioFE na casa. Vamos nessa.",
-        subtitles: [
-          { id: 1, start: "00:00:00,500", end: "00:00:03,000", text: "♪ (Intro Beat) ♪" },
-          { id: 2, start: "00:00:03,500", end: "00:00:06,000", text: "Yeah, bem-vindo ao futuro do som" },
-          { id: 3, start: "00:00:06,500", end: "00:00:09,000", text: "AudioFE na casa, vamos nessa!" },
-          { id: 4, start: "00:00:09,500", end: "00:00:12,500", text: "Criando hits com inteligência artificial" },
-          { id: 5, start: "00:00:13,000", end: "00:00:16,000", text: "Onde a tecnologia encontra o ritmo" },
-          { id: 6, start: "00:00:16,500", end: "00:00:20,000", text: "Sinta a vibração, sinta a energia" },
-        ]
-      });
-    }, 2500);
-  });
+export async function processVideoSubtitles(audioUrl: string) {
+  try {
+    const response = await fetch("/api/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audioUrl })
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to transcribe");
+    }
+
+    const data = await response.json();
+    
+    if (data.transcription && data.transcription.segments) {
+      return {
+        transcription: data.transcription.text,
+        translation: "",
+        subtitles: data.transcription.segments.map((s: any, i: number) => ({
+          id: i + 1,
+          start: formatTime(s.start),
+          end: formatTime(s.end),
+          text: s.text.trim()
+        }))
+      };
+    }
+
+    return {
+      transcription: data.transcription || "",
+      translation: "",
+      subtitles: [
+        { id: 1, start: "00:00:01,000", end: "00:00:05,000", text: "Transcrição concluída" }
+      ]
+    };
+  } catch (error) {
+    console.error("Transcription Error:", error);
+    return {
+      transcription: "",
+      translation: "",
+      subtitles: [
+        { id: 1, start: "00:00:01,000", end: "00:00:05,000", text: "Erro na transcrição" }
+      ]
+    };
+  }
+}
+
+function formatTime(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`;
 }
 
 export function generateSRT(subtitles: any[]) {

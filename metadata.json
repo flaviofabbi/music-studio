@@ -1,6 +1,6 @@
 {
-  "name": "AudioFE – AI Music Studio",
-  "description": "Estúdio musical futurista com geração de música por IA, letras automáticas e legendagem de vídeos.",
+  "name": "AudioFE – AI Music Video Studio",
+  "description": "Crie vídeos musicais incríveis com música gerada por IA e legendas sincronizadas automaticamente.",
   "requestFramePermissions": [
     "camera",
     "microphone",
